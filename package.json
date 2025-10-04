@@ -1,10 +1,10 @@
 {
-	"name": "potree-core",
-	"version": "2.0.11",
+	"name": "@fastlabel/potree-core",
+	"version": "2.0.11-fastlabel.0.0.0",
 	"description": "Potree wrapper for three.js applications",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/tentone/potree-core.git"
+		"url": "https://github.com/fastlabel/potree-core.git"
 	},
 	"files": [
 		"dist"
@@ -26,7 +26,7 @@
 		"3d",
 		"webgl"
 	],
-	"author": "Tentone",
+	"author": "FastLabel",
 	"license": "MIT",
 	"peerDependencies": {
 		"three": ">0.125.0"
@@ -56,5 +56,9 @@
 		"webpack-cli": "5.1.4",
 		"webpack-dev-server": "5.2.1",
 		"worker-loader": "3.0.8"
+	},
+	"publishConfig": {
+		"access": "restricted",
+		"registry": "https://npm.pkg.github.com"
 	}
 }
