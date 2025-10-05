@@ -113,3 +113,20 @@ loop();
  ### To Do
  - Supports logarithmic depth buffer (just by enabling it on the threejs renderer), useful for large scale visualization.
  - Point clouds are automatically updated, frustum culling is used to avoid unnecessary updates (better update performance for multiple point clouds).
+
+
+### fastlabel 対応の拡張履歴
+
+#### アノテーションの色付けの繁栄保存
+
+##### change RequestManager
+
+urlのパターンがRequestManagerだと、ファイル名しか変更できないため、拡張して各コンテンツごとにURLを解決できるようにする
+
+##### support NodeDecorator
+
+Potreeのデータは静的な巨大なファイルを、byteのrange指定で取得するので、アノテーションの情報は、識別キーと一緒に同一粒度(node)単位で、保存しているためその繁栄のために、NodeDecoratorを差し込めるようにする
+
+##### add bk_rgba
+
+色のクリア時に、戻しやすくするために bk_rgba を追加する

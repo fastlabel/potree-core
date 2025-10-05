@@ -1,16 +1,16 @@
-import {BufferAttribute, BufferGeometry, Vector3} from 'three';
-import {PointAttribute, PointAttributes, PointAttributeTypes} from './PointAttributes';
-import {Box3, Sphere} from 'three';
-import {WorkerPool, WorkerType} from './WorkerPool';
-import {OctreeGeometryNode} from './OctreeGeometryNode';
-import {OctreeGeometry} from './OctreeGeometry';
-import {RequestManager} from './RequestManager';
+import { BufferAttribute, BufferGeometry, DynamicDrawUsage, StaticDrawUsage, Vector3 } from 'three';
+import { PointAttribute, PointAttributes, PointAttributeTypes } from './PointAttributes';
+import { Box3, Sphere } from 'three';
+import { WorkerPool, WorkerType } from './WorkerPool';
+import { OctreeGeometryNode } from './OctreeGeometryNode';
+import { OctreeGeometry } from './OctreeGeometry';
+import { RequestManager } from './RequestManager';
+import { ResourceTarget } from '../types';
 
 /**
  * NodeLoader is responsible for loading the geometry of octree nodes.
  */
-export class NodeLoader
-{
+export class NodeLoader {
 	/**
 	 * Point attributes to be used when loading the geometry.
 	 */
@@ -25,20 +25,18 @@ export class NodeLoader
 	 * Offset applied to the geometry when loading.
 	 */
 	public offset?: [number, number, number];
-	
 
-	constructor(public url: string, public workerPool: WorkerPool, public metadata: Metadata, public requestManager: RequestManager){}
+
+	constructor(public workerPool: WorkerPool, public metadata: Metadata, public requestManager: RequestManager) { }
 
 	/**
 	 * Loads the geometry for a given octree node.
 	 * 
 	 * @param node - The octree node to load. 
 	 */
-	async load(node: OctreeGeometryNode)
-	{
+	async load(node: OctreeGeometryNode) {
 
-		if (node.loaded || node.loading)
-		{
+		if (node.loaded || node.loading) {
 			return;
 		}
 
@@ -46,35 +44,27 @@ export class NodeLoader
 		// TODO: Need to put the numNodesLoading to the pco
 		node.octreeGeometry.numNodesLoading++;
 
-		try 
-		{
-			if (node.nodeType === 2)
-			{ // TODO: Investigate
+		try {
+			if (node.nodeType === 2) { // TODO: Investigate
 				await this.loadHierarchy(node);
 			}
 
-			let {byteOffset, byteSize} = node;
-			
-			if (byteOffset === undefined || byteSize === undefined) 
-			{
+			let { byteOffset, byteSize } = node;
+
+			if (byteOffset === undefined || byteSize === undefined) {
 				throw new Error('byteOffset and byteSize are required');
 			}
-
-			let urlOctree = (await this.requestManager.getUrl(this.url)).replace('/metadata.json', '/octree.bin');
-
 			let first = byteOffset;
 			let last = byteOffset + byteSize - BigInt(1);
 
 			let buffer;
 
-			if (byteSize === BigInt(0))
-			{
+			if (byteSize === BigInt(0)) {
 				buffer = new ArrayBuffer(0);
 				console.warn(`loaded node with 0 bytes: ${node.name}`);
 			}
-			else 
-			{
-				let response = await this.requestManager.fetch(urlOctree, {
+			else {
+				let response = await this.requestManager.fetch(ResourceTarget.OCTREE_BIN, {
 					headers: {
 						'content-type': 'multipart/byteranges',
 						'Range': `bytes=${first}-${last}`
@@ -87,8 +77,7 @@ export class NodeLoader
 			const workerType = this.metadata.encoding === 'BROTLI' ? WorkerType.DECODER_WORKER_BROTLI : WorkerType.DECODER_WORKER;
 			const worker = this.workerPool.getWorker(workerType);
 
-			worker.onmessage = (e) => 
-			{
+			worker.onmessage = (e) => {
 
 				let data = e.data;
 				let buffers = data.attributeBuffers;
@@ -96,33 +85,34 @@ export class NodeLoader
 				this.workerPool.returnWorker(workerType, worker);
 
 				let geometry = new BufferGeometry();
-				
-				for (let property in buffers)
-				{
+
+				for (let property in buffers) {
 
 					let buffer = buffers[property].buffer;
 
-					if (property === 'position')
-					{
+					if (property === 'position') {
 						geometry.setAttribute('position', new BufferAttribute(new Float32Array(buffer), 3));
 					}
-					else if (property === 'rgba')
-					{
-						geometry.setAttribute('rgba', new BufferAttribute(new Uint8Array(buffer), 4, true));
+					else if (property === 'rgba') {
+						const rgba = new BufferAttribute(new Uint8Array(buffer), 4, true);
+						geometry.setAttribute('rgba', rgba);
+						const bk_rgba = rgba.clone();
+						bk_rgba.setUsage(StaticDrawUsage);
+						geometry.setAttribute("bk_rgba", bk_rgba);
+						rgba.setUsage(DynamicDrawUsage);
+						// TODO update rgba by node
+
 					}
-					else if (property === 'NORMAL')
-					{
+					else if (property === 'NORMAL') {
 						// geometry.setAttribute('rgba', new BufferAttribute(new Uint8Array(buffer), 4, true));
 						geometry.setAttribute('normal', new BufferAttribute(new Float32Array(buffer), 3));
 					}
-					else if (property === 'INDICES') 
-					{
+					else if (property === 'INDICES') {
 						let bufferAttribute = new BufferAttribute(new Uint8Array(buffer), 4);
 						bufferAttribute.normalized = true;
 						geometry.setAttribute('indices', bufferAttribute);
 					}
-					else 
-					{
+					else {
 						const bufferAttribute: BufferAttribute & {
 							potree?: object
 						} = new BufferAttribute(new Float32Array(buffer), 1);
@@ -172,16 +162,14 @@ export class NodeLoader
 
 			worker.postMessage(message, [message.buffer]);
 		}
-		catch (e)
-		{
+		catch (e) {
 			node.loaded = false;
 			node.loading = false;
 			node.octreeGeometry.numNodesLoading--;
 		}
 	}
 
-	public parseHierarchy(node: OctreeGeometryNode, buffer: ArrayBuffer)
-	{
+	public parseHierarchy(node: OctreeGeometryNode, buffer: ArrayBuffer) {
 		let view = new DataView(buffer);
 		let bytesPerNode = 22;
 		let numNodes = buffer.byteLength / bytesPerNode;
@@ -192,8 +180,7 @@ export class NodeLoader
 		nodes[0] = node;
 		let nodePos = 1;
 
-		for (let i = 0; i < numNodes; i++)
-		{
+		for (let i = 0; i < numNodes; i++) {
 			let current = nodes[i];
 
 			let type = view.getUint8(i * bytesPerNode + 0);
@@ -203,41 +190,35 @@ export class NodeLoader
 			let byteSize = view.getBigInt64(i * bytesPerNode + 14, true);
 
 
-			if (current.nodeType === 2)
-			{
+			if (current.nodeType === 2) {
 				// replace proxy with real node
 				current.byteOffset = byteOffset;
 				current.byteSize = byteSize;
 				current.numPoints = numPoints;
 			}
-			else if (type === 2)
-			{
+			else if (type === 2) {
 				// load proxy
 				current.hierarchyByteOffset = byteOffset;
 				current.hierarchyByteSize = byteSize;
 				current.numPoints = numPoints;
 			}
-			else 
-			{
+			else {
 				// load real node 
 				current.byteOffset = byteOffset;
 				current.byteSize = byteSize;
 				current.numPoints = numPoints;
 			}
-			
+
 			current.nodeType = type;
 
-			if (current.nodeType === 2)
-			{
+			if (current.nodeType === 2) {
 				continue;
 			}
 
-			for (let childIndex = 0; childIndex < 8; childIndex++)
-			{
+			for (let childIndex = 0; childIndex < 8; childIndex++) {
 				let childExists = (1 << childIndex & childMask) !== 0;
 
-				if (!childExists)
-				{
+				if (!childExists) {
 					continue;
 				}
 
@@ -263,22 +244,17 @@ export class NodeLoader
 		}
 	}
 
-	async loadHierarchy(node: OctreeGeometryNode)
-	{
+	async loadHierarchy(node: OctreeGeometryNode) {
 
-		let {hierarchyByteOffset, hierarchyByteSize} = node;
+		let { hierarchyByteOffset, hierarchyByteSize } = node;
 
-		if (hierarchyByteOffset === undefined || hierarchyByteSize === undefined) 
-		{
+		if (hierarchyByteOffset === undefined || hierarchyByteSize === undefined) {
 			throw new Error(`hierarchyByteOffset and hierarchyByteSize are undefined for node ${node.name}`);
 		}
-
-		let hierarchyPath = (await this.requestManager.getUrl(this.url)).replace('/metadata.json', '/hierarchy.bin');
-
 		let first = hierarchyByteOffset;
 		let last = first + hierarchyByteSize - BigInt(1);
 
-		let response = await this.requestManager.fetch(hierarchyPath, {
+		let response = await this.requestManager.fetch(ResourceTarget.HIERARCHY_BIN, {
 			headers: {
 				'content-type': 'multipart/byteranges',
 				'Range': `bytes=${first}-${last}`
@@ -301,36 +277,29 @@ let tmpVec3 = new Vector3();
  * @param index - The index of the child AABB to create, which determines its position relative to the parent AABB.
  * @returns The newly created child AABB.
  */
-function createChildAABB(aabb: Box3, index: number)
-{
+function createChildAABB(aabb: Box3, index: number) {
 	let min = aabb.min.clone();
 	let max = aabb.max.clone();
 	let size = tmpVec3.subVectors(max, min);
 
-	if ((index & 0b0001) > 0) 
-	{
+	if ((index & 0b0001) > 0) {
 		min.z += size.z / 2;
 	}
-	else 
-	{
+	else {
 		max.z -= size.z / 2;
 	}
 
-	if ((index & 0b0010) > 0) 
-	{
+	if ((index & 0b0010) > 0) {
 		min.y += size.y / 2;
 	}
-	else 
-	{
+	else {
 		max.y -= size.y / 2;
 	}
-	
-	if ((index & 0b0100) > 0) 
-	{
+
+	if ((index & 0b0100) > 0) {
 		min.x += size.x / 2;
 	}
-	else 
-	{
+	else {
 		max.x -= size.x / 2;
 	}
 
@@ -393,8 +362,7 @@ export interface Metadata {
 /**
  * OctreeLoader is responsible for loading octree geometries from a given URL.
  */
-export class OctreeLoader
-{
+export class OctreeLoader {
 	/**
 	 * WorkerPool instance used for managing workers for loading tasks.
 	 */
@@ -407,17 +375,15 @@ export class OctreeLoader
 	 * @param jsonAttributes Array of attributes in JSON format.
 	 * @returns A PointAttributes instance containing the parsed attributes.
 	 */
-	public static parseAttributes(jsonAttributes: Attribute[]): PointAttributes
-	{
+	public static parseAttributes(jsonAttributes: Attribute[]): PointAttributes {
 
 		let attributes = new PointAttributes();
 
 		// Replacements object for string to string
-		let replacements: {[key: string]: string} = {'rgb': 'rgba'};
+		let replacements: { [key: string]: string } = { 'rgb': 'rgba' };
 
-		for (const jsonAttribute of jsonAttributes) 
-		{
-			let {name, numElements, min, max} = jsonAttribute;
+		for (const jsonAttribute of jsonAttributes) {
+			let { name, numElements, min, max } = jsonAttribute;
 
 			let type = typenameTypeattributeMap[jsonAttribute.type]; // Fix the typing, currently jsonAttribute has type 'never'
 
@@ -425,20 +391,16 @@ export class OctreeLoader
 
 			let attribute = new PointAttribute(potreeAttributeName, type, numElements);
 
-			if (numElements === 1)
-			{
+			if (numElements === 1) {
 				attribute.range = [min[0], max[0]];
 			}
-			else 
-			{
+			else {
 				attribute.range = [min, max];
 			}
 
-			if (name === 'gps-time') 
-			{
+			if (name === 'gps-time') {
 				// HACK: Guard against bad gpsTime range in metadata, see potree/potree#909
-				if (typeof attribute.range[0] === 'number' && attribute.range[0] === attribute.range[1]) 
-				{
+				if (typeof attribute.range[0] === 'number' && attribute.range[0] === attribute.range[1]) {
 					attribute.range[1] += 1;
 				}
 			}
@@ -450,13 +412,12 @@ export class OctreeLoader
 
 		{
 			// check if it has normals
-			let hasNormals = 
-				attributes.attributes.find((a) => {return a.name === 'NormalX';}) !== undefined &&
-				attributes.attributes.find((a) => {return a.name === 'NormalY';}) !== undefined &&
-				attributes.attributes.find((a) => {return a.name === 'NormalZ';}) !== undefined;
+			let hasNormals =
+				attributes.attributes.find((a) => { return a.name === 'NormalX'; }) !== undefined &&
+				attributes.attributes.find((a) => { return a.name === 'NormalY'; }) !== undefined &&
+				attributes.attributes.find((a) => { return a.name === 'NormalZ'; }) !== undefined;
 
-			if (hasNormals)
-			{
+			if (hasNormals) {
 				let vector = {
 					name: 'NORMAL',
 					attributes: ['NormalX', 'NormalY', 'NormalZ']
@@ -475,21 +436,20 @@ export class OctreeLoader
 	 * @param requestManager - The RequestManager instance used to handle HTTP requests.
 	 * @returns Geometry object containing the loaded octree geometry.
 	 */
-	public async load(url: string, requestManager: RequestManager)
-	{
+	public async load(requestManager: RequestManager) {
 
-		let response = await requestManager.fetch(await requestManager.getUrl(url));
+		let response = await requestManager.fetch(ResourceTarget.METADATA_JSON);
 		let metadata: Metadata = await response.json();
 
 		let attributes = OctreeLoader.parseAttributes(metadata.attributes);
 
-		let loader = new NodeLoader(url, this.workerPool, metadata, requestManager);
+		let loader = new NodeLoader(this.workerPool, metadata, requestManager);
 		loader.attributes = attributes;
 		loader.scale = metadata.scale;
 		loader.offset = metadata.offset;
 
 		let octree = new OctreeGeometry(loader, new Box3(new Vector3(...metadata.boundingBox.min), new Vector3(...metadata.boundingBox.max)));
-		octree.url = await requestManager.getUrl(url);
+		octree.url = await requestManager.getUrl(ResourceTarget.METADATA_JSON);
 		octree.spacing = metadata.spacing;
 		octree.scale = metadata.scale;
 
@@ -521,7 +481,7 @@ export class OctreeLoader
 
 		loader.load(root);
 
-		let result = {geometry: octree};
+		let result = { geometry: octree };
 
 		return result;
 

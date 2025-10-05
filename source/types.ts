@@ -1,10 +1,17 @@
-import {RequestManager} from './loading2/RequestManager';
-import {OctreeGeometry} from './loading2/OctreeGeometry';
-import {PointCloudOctreeGeometry} from './point-cloud-octree-geometry';
-import {Box3, Camera, Sphere, Vector3, WebGLRenderer} from 'three';
-import {PointCloudOctree} from './point-cloud-octree';
-import {LRU} from './utils/lru';
+import { OctreeGeometry } from "./loading2/OctreeGeometry";
+import { PointCloudOctreeGeometry } from "./point-cloud-octree-geometry";
+import { Box3, Camera, Sphere, Vector3, WebGLRenderer } from "three";
+import { PointCloudOctree } from "./point-cloud-octree";
+import { LRU } from "./utils/lru";
 
+export const ResourceTarget = {
+  METADATA_JSON: "metadata.json",
+  OCTREE_BIN: "octree.bin",
+  HIERARCHY_BIN: "hierarchy.bin",
+} as const;
+
+export type ResourceTarget =
+  (typeof ResourceTarget)[keyof typeof ResourceTarget];
 
 export interface IPointCloudTreeNode {
   id: number;
@@ -21,25 +28,28 @@ export interface IPointCloudTreeNode {
 
   dispose(): void;
 
-  traverse(cb: (node: IPointCloudTreeNode)=> void, includeSelf?: boolean): void;
+  traverse(
+    cb: (node: IPointCloudTreeNode) => void,
+    includeSelf?: boolean
+  ): void;
 }
 
 export interface IVisibilityUpdateResult {
   visibleNodes: IPointCloudTreeNode[];
   numVisiblePoints: number;
-  
+
   /**
    * True when a node has been loaded but was not added to the scene yet.
-   * 
+   *
    * Make sure to call updatePointClouds() again on the next frame.
    */
   exceededMaxLoadsToGPU: boolean;
-  
+
   /**
    * True when at least one node in view has failed to load.
    */
   nodeLoadFailed: boolean;
-  
+
   /**
    * Promises for loading nodes, will reject when loading fails.
    */
@@ -51,13 +61,10 @@ export interface IPotree {
   maxNumNodesLoading: number;
   lru: LRU;
 
-  loadPointCloud(url: string, baseUrl: string): Promise<PointCloudOctree>;
-  loadPointCloud(url: string, requestManager: RequestManager): Promise<PointCloudOctree>;
-
   updatePointClouds(
     pointClouds: PointCloudOctree[],
     camera: Camera,
-    renderer: WebGLRenderer,
+    renderer: WebGLRenderer
   ): IVisibilityUpdateResult;
 }
 
