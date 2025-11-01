@@ -38,6 +38,7 @@ import {
 import { BinaryHeap } from "./utils/binary-heap";
 import { Box3Helper } from "./utils/box3-helper";
 import { LRU } from "./utils/lru";
+import { NodeDecorator } from "node-decorator";
 
 /**
  * Represents an item in a processing queue for point cloud operations.
@@ -70,20 +71,35 @@ export class Potree implements IPotree {
 
   public maxNumNodesLoading: number = MAX_NUM_NODES_LOADING;
 
+  constructor(
+    public nodeDecorator: NodeDecorator = {
+      prepareData: async () => {
+        return {};
+      },
+      decorateRgbaBufferAttribute: () => {
+        //
+      },
+      decorateBufferGeometry: () => {
+        //
+      },
+    }
+  ) {}
+
   public get features() {
     return getFeatures();
   }
 
   public lru = new LRU(this._pointBudget);
 
-  
   public async loadPointCloud(
     requestManager: RequestManager,
     material?: PointCloudMaterial
   ): Promise<PointCloudOctree> {
-    return await loadOctree(requestManager).then((geometry: OctreeGeometry) => {
-      return new PointCloudOctree(this, geometry, material);
-    });
+    return await loadOctree(requestManager, this.nodeDecorator).then(
+      (geometry: OctreeGeometry) => {
+        return new PointCloudOctree(this, geometry, material);
+      }
+    );
   }
 
   public updatePointClouds(

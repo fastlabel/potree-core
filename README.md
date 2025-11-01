@@ -117,6 +117,24 @@ loop();
 
 ### fastlabel 対応の拡張履歴
 
+#### 反映方法
+
+```
+npm run build
+npm pack
+```
+
+
+生成された fastlabel-potree-core-2.0.11-fastlabel.0.0.x.tgz を fastlabel-application へ移動
+
+古いバージョンを削除して、新規をインポート
+
+```
+yarn remove @fastlabel/potree-core
+file:./lib/fastlabel-potree-core-2.0.11-fastlabel.0.0.X.tgz
+```
+
+
 #### アノテーションの色付けの繁栄保存
 
 ##### change RequestManager
@@ -127,6 +145,14 @@ urlのパターンがRequestManagerだと、ファイル名しか変更できな
 
 Potreeのデータは静的な巨大なファイルを、byteのrange指定で取得するので、アノテーションの情報は、識別キーと一緒に同一粒度(node)単位で、保存しているためその繁栄のために、NodeDecoratorを差し込めるようにする
 
+###### rgba BufferAttribute の色をアノテーションの色で塗り替える
+
+###### BufferAttribute追加 anno_idx アノテーションを区別する為に追加
+
 ##### add bk_rgba
 
 色のクリア時に、戻しやすくするために bk_rgba を追加する
+
+##### NodeLoader load に完了時のcallbackを追加
+
+load の Promiseは、ワーカーにPOSTするまでになっているため、完了時のタイミングとれないため、追加
