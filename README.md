@@ -131,7 +131,7 @@ npm pack
 
 ```
 yarn remove @fastlabel/potree-core
-file:./lib/fastlabel-potree-core-2.0.11-fastlabel.0.0.X.tgz
+yarn add file:./lib/fastlabel-potree-core-2.0.11-fastlabel.0.0.X.tgz
 ```
 
 
@@ -156,3 +156,16 @@ Potreeのデータは静的な巨大なファイルを、byteのrange指定で�
 ##### NodeLoader load に完了時のcallbackを追加
 
 load の Promiseは、ワーカーにPOSTするまでになっているため、完了時のタイミングとれないため、追加
+
+##### 点群・アノテーション済みの点群の色調節、表示非表示
+
+以下のアトリビュートをシェーダーに追加
+
+| 属性名 | 説明 | 補足 |
+|:-----------|:------------|:------------|
+| vPointOpacity | 未アノテーションの点群の不透明度 | 点群コントラクト |
+| vAnnoOpacity | アノテーション済みの点群の不透明度 | 不透明度 |
+| vAnnoVisible | アノテーションクラスの点群の表示非表示 |  |
+| vAnnoVisibleSize | アノテーションクラスの点群の表示非表示 |  |
+| vTaskAnnoVisible | アノテーションの点群の表示非表示 | |
+| vTaskAnnoVisibleSize | アノテーションの点群の表示非表示 | |

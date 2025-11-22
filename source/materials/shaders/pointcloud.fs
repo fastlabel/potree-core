@@ -18,6 +18,13 @@ uniform float screenHeight;
 uniform float far;
 uniform sampler2D depthMap;
 
+uniform float vPointOpacity;
+uniform float vAnnoOpacity;
+uniform sampler2D vTaskAnnoVisible;
+uniform float vTaskAnnoVisibleSize;
+uniform sampler2D vAnnoVisible;
+uniform float vAnnoVisibleSize;
+
 out vec4 fragColor;
 
 #ifdef highlight_point
@@ -62,9 +69,12 @@ in vec3 vViewPosition;
 	in float vHighlight;
 #endif
 
+in float vIsVisible;
+
 float specularStrength = 1.0;
 
 void main() {
+	if (vIsVisible < 0.5) discard;
 	// Choose the proper color format
 	#ifdef new_format
 		vec3 actualColor = vColor.xyz;
@@ -86,7 +96,7 @@ void main() {
 	// Depth comparison for weighted splats
 	#if defined(weighted_splats)
 		vec2 uv = gl_FragCoord.xy / vec2(screenWidth, screenHeight);
-		if(vLinearDepth > texture2D(depthMap, uv).r + vRadius + blendDepthSupplement) discard;
+		if(vLinearDepth > texture(depthMap, uv).r + vRadius + blendDepthSupplement) discard;
 	#endif
 
 	// Lighting calculations for Phong shading
