@@ -38,7 +38,8 @@ import {SPECTRAL} from './gradients';
 import {
 	generateClassificationTexture,
 	generateDataTexture,
-	generateGradientTexture
+	generateGradientTexture,
+	generateVisibleTexture
 } from './texture-generation';
 import {IClassification, IGradient, IUniform} from './types';
 import {ColorEncoding} from './color-encoding';
@@ -189,6 +190,13 @@ export interface IPointCloudMaterialUniforms {
 	highlightedPointScale: IUniform<number>;
 	/** Scale factor for view-dependent sizing */
 	viewScale: IUniform<number>;
+	//	
+	vPointOpacity: IUniform<number>;
+	vAnnoOpacity: IUniform<number>;
+	vAnnoVisible:IUniform<Texture>;
+	vAnnoVisibleSize: IUniform<number>;
+	vTaskAnnoVisible:IUniform<Texture>;
+	vTaskAnnoVisibleSize: IUniform<number>;	
 }
 
 const TREE_TYPE_DEFS = {
@@ -262,6 +270,8 @@ export class PointCloudMaterial extends RawShaderMaterial
 
 	visibleNodesTexture: Texture | undefined;
 
+	private _autoBlending: boolean = true;
+
 	private visibleNodeTextureOffsets = new Map<string, number>();
 
 	private _gradient = SPECTRAL;
@@ -273,6 +283,14 @@ export class PointCloudMaterial extends RawShaderMaterial
 	private classificationTexture: Texture | undefined = generateClassificationTexture(
 		this._classification,
 	);
+
+	private _taskAnnoVisible:boolean[] = [];
+
+	private vTaskAnnoVisibleTexture:Texture | undefined = undefined;
+
+	private _annoVisible:boolean[] = [];
+
+	private vAnnoVisibleTexture: Texture | undefined = undefined;
 
 	uniforms: IPointCloudMaterialUniforms & Record<string, IUniform<any>> = {
 		bbSize: makeUniform('fv', [0, 0, 0] as [number, number, number]),
@@ -327,7 +345,14 @@ export class PointCloudMaterial extends RawShaderMaterial
 		highlightedPointColor: makeUniform('fv', DEFAULT_HIGHLIGHT_COLOR.clone()),
 		enablePointHighlighting: makeUniform('b', true),
 		highlightedPointScale: makeUniform('f', 2.0),
-		viewScale: makeUniform('f', 1.0)
+		viewScale: makeUniform('f', 1.0),
+		// 
+		vPointOpacity:makeUniform('f', 1.0),
+		vAnnoOpacity:makeUniform('f', 1.0),
+		vTaskAnnoVisible:makeUniform('t', this.vTaskAnnoVisibleTexture || new Texture()),
+		vTaskAnnoVisibleSize:makeUniform('f', 0),
+		vAnnoVisible:makeUniform('t', this.vAnnoVisibleTexture || new Texture()),
+		vAnnoVisibleSize:makeUniform('f', 0),
 	};
 
   @uniform('bbSize') bbSize!: [number, number, number];
@@ -407,6 +432,18 @@ export class PointCloudMaterial extends RawShaderMaterial
   @uniform('highlightedPointScale') highlightedPointScale!: number;
 
   @uniform('viewScale') viewScale!: number;
+
+  @uniform('vPointOpacity') vPointOpacity!:number;
+
+  @uniform('vAnnoOpacity') vAnnoOpacity!:number;
+
+  @uniform('vTaskAnnoVisible') vTaskAnnoVisible!:Texture;
+
+  @uniform('vTaskAnnoVisibleSize') vTaskAnnoVisibleSize!:number;
+
+  @uniform('vAnnoVisible') vAnnoVisible!:Texture;
+
+  @uniform('vAnnoVisibleSize') vAnnoVisibleSize!:number;
 
   // Declare PointCloudMaterial attributes that need shader updates upon change, and set default values.
   @requiresShaderUpdate() useClipBox: boolean = false;
@@ -510,6 +547,18 @@ export class PointCloudMaterial extends RawShaderMaterial
   		this.depthMap.dispose();
   		this.depthMap = undefined;
   	}
+
+	if (this.vTaskAnnoVisible) 
+  	{
+  		this.vTaskAnnoVisible.dispose();
+  		this.vTaskAnnoVisible = undefined;
+  	}
+
+	if (this.vAnnoVisible) 
+  	{
+  		this.vAnnoVisible.dispose();
+  		this.vAnnoVisible = undefined;
+  	}
   }
 
   clearVisibleNodeTextureOffsets(): void 
@@ -524,30 +573,36 @@ export class PointCloudMaterial extends RawShaderMaterial
   	this.vertexShader = this.applyDefines(VertShader);
   	this.fragmentShader = this.applyDefines(FragShader);
 
-  	if (this.opacity === 1.0) 
-  	{
-  		this.blending = NoBlending;
-  		this.transparent = false;
-  		this.depthTest = true;
-  		this.depthWrite = true;
-  		this.depthFunc = LessEqualDepth;
-  	}
-  	else if (this.opacity < 1.0 && !this.useEDL) 
-  	{
-  		this.blending = AdditiveBlending;
-  		this.transparent = true;
-  		this.depthTest = false;
-  		this.depthWrite = true;
-  	}
+	if (this._autoBlending)
+	{
+		if (this.opacity === 1.0) 
+		{
+			this.blending = NoBlending;
+			this.transparent = false;
+			this.depthTest = true;
+			this.depthWrite = true;
+			this.depthFunc = LessEqualDepth;
+		}
+		else if (this.opacity < 1.0 && !this.useEDL) 
+		{
+			this.blending = AdditiveBlending;
+			this.transparent = true;
+			this.depthTest = false;
+			this.depthWrite = true;
+		}
+  
+		if (this.weighted) 
+		{
+			this.blending = AdditiveBlending;
+			this.transparent = true;
+			this.depthTest = true;
+			this.depthWrite = false;
+			this.depthFunc = LessEqualDepth;
+		}
+	}
 
-  	if (this.weighted) 
-  	{
-  		this.blending = AdditiveBlending;
-  		this.transparent = true;
-  		this.depthTest = true;
-  		this.depthWrite = false;
-  		this.depthFunc = LessEqualDepth;
-  	}
+
+
 
   	this.needsUpdate = true;
   }
@@ -740,6 +795,101 @@ export class PointCloudMaterial extends RawShaderMaterial
   	this.heightMax = value[1];
   }
 
+  set autoBlending(value:boolean)
+  {
+	this._autoBlending = value;
+  }
+
+  get annoVisible():boolean[]
+  {
+	return this._annoVisible;
+  }
+
+  set annoVisible(annoVisible:boolean[])
+  {
+	let isEqual = false;
+  	if (this._annoVisible === undefined) 
+  	{
+  		isEqual = false;
+  	}
+    else 
+  	{
+  		isEqual = annoVisible.length === this._annoVisible.length;
+
+		let idx = 0;
+  		for (const visible of annoVisible) 
+  		{
+			if (visible === undefined) {
+				isEqual = false;
+				break;
+			}
+			if (visible !== this._annoVisible[idx]) {
+				isEqual = false;
+				break;
+			}
+			idx++;
+  		}
+  	}
+
+  	if (!isEqual) 
+  	{
+  		this._annoVisible = annoVisible;
+  		this.recomputeannoVisible();
+  	}
+  }
+
+  private recomputeannoVisible(): void
+  {
+	this.vAnnoVisibleTexture = generateVisibleTexture(this._annoVisible);
+	this.setUniform('vAnnoVisible', this.vAnnoVisibleTexture);
+	this.setUniform('vAnnoVisibleSize', this.vAnnoVisibleTexture.image.width);
+  }
+
+  get taskAnnoVisible():boolean[]
+  {
+	return this._taskAnnoVisible;
+  }
+
+  set taskAnnoVisible(taskAnnoVisible:boolean[])
+  {
+	let isEqual = false;
+  	if (this._taskAnnoVisible === undefined) 
+  	{
+  		isEqual = false;
+  	}
+    else 
+  	{
+  		isEqual = taskAnnoVisible.length === this._taskAnnoVisible.length;
+
+		let idx = 0;
+  		for (const visible of taskAnnoVisible) 
+  		{
+			if (visible === undefined) {
+				isEqual = false;
+				break;
+			}
+			if (visible !== this._taskAnnoVisible[idx]) {
+				isEqual = false;
+				break;
+			}
+			idx++;			
+  		}
+  	}
+
+  	if (!isEqual) 
+  	{
+  		this._taskAnnoVisible = taskAnnoVisible;
+  		this.recomputeTaskAnnoVisible();
+  	}
+  }
+
+  private recomputeTaskAnnoVisible(): void
+  {
+	this.vTaskAnnoVisibleTexture = generateVisibleTexture(this._taskAnnoVisible);
+	this.setUniform('vTaskAnnoVisible', this.vTaskAnnoVisibleTexture);
+	this.setUniform('vTaskAnnoVisibleSize', this.vTaskAnnoVisibleTexture.image.width);
+  }
+  
   getUniform<K extends keyof IPointCloudMaterialUniforms>(
   	name: K,
   ): IPointCloudMaterialUniforms[K]['value'] 

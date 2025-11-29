@@ -12,7 +12,9 @@ in float returnNumber;
 in float numberOfReturns;
 in float pointSourceID;
 in vec4 indices;
-
+// customized for fastlabel
+in float anno_idx;
+in float task_anno_idx;
 
 // Uniforms
 uniform mat4 modelMatrix;
@@ -73,6 +75,13 @@ uniform sampler2D gradient;
 uniform sampler2D classificationLUT;
 uniform sampler2D depthMap;
 
+uniform float vPointOpacity;
+uniform float vAnnoOpacity;
+uniform sampler2D vTaskAnnoVisible;
+uniform float vTaskAnnoVisibleSize;
+uniform sampler2D vAnnoVisible;
+uniform float vAnnoVisibleSize;
+
 #ifdef highlight_point
 	uniform vec3 highlightedPointCoordinate;
 	uniform bool enablePointHighlighting;
@@ -113,6 +122,7 @@ out vec3 vViewPosition;
 	out float vHighlight;
 #endif
 
+out float vIsVisible;
 
 // OCTREE LOD FUNCTIONS
 #if (defined(adaptive_point_size) || defined(color_type_lod)) && defined(tree_type_octree)
@@ -327,6 +337,22 @@ vec3 toLinear(vec3 sRGB) {
 }
 #endif
 
+bool isTaskAnnoHidden(float index) {
+  float idx = floor(index + 0.5);
+  float x = mod(idx, vTaskAnnoVisibleSize);
+  float y = floor(idx / vTaskAnnoVisibleSize);
+  vec2 uv = vec2((x + 0.5) / vTaskAnnoVisibleSize, (y + 0.5) / vTaskAnnoVisibleSize);
+  return texture(vTaskAnnoVisible, uv).r < 0.5;
+}
+
+bool isAnnoHidden(float index) {
+  float idx = floor(index + 0.5);
+  float x = mod(idx, vAnnoVisibleSize);
+  float y = floor(idx / vAnnoVisibleSize);
+  vec2 uv = vec2((x + 0.5) / vAnnoVisibleSize, (y + 0.5) / vAnnoVisibleSize);
+  return texture(vAnnoVisible, uv).r < 0.5;
+}
+
 void main() {
 	// Compute model-view position and projected position
 	vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
@@ -392,7 +418,12 @@ void main() {
 		#ifdef attenuated_opacity
 			vOpacity = opacity * exp(-length(-mvPosition.xyz) / opacityAttenuation);
 		#else
-			vOpacity = opacity;
+			// customized for fastlabel
+			if (task_anno_idx > 0.5) {
+			    vOpacity = vAnnoOpacity;
+			} else {
+			    vOpacity = vPointOpacity;
+			}
 		#endif
 	#endif
 
@@ -487,4 +518,11 @@ void main() {
 	#if defined(output_color_encoding_linear) && defined(input_color_encoding_sRGB) && !defined(color_type_point_index)
 		vColor = fromLinear(vColor);
 	#endif
+
+	vIsVisible = 1.0;
+	if (isTaskAnnoHidden(task_anno_idx)) {
+		vIsVisible = 0.0;
+	} else if (isAnnoHidden(anno_idx)) {
+		vIsVisible = 0.0;
+	}
 }

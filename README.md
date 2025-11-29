@@ -113,3 +113,59 @@ loop();
  ### To Do
  - Supports logarithmic depth buffer (just by enabling it on the threejs renderer), useful for large scale visualization.
  - Point clouds are automatically updated, frustum culling is used to avoid unnecessary updates (better update performance for multiple point clouds).
+
+
+### fastlabel 対応の拡張履歴
+
+#### 反映方法
+
+```
+npm run build
+npm pack
+```
+
+
+生成された fastlabel-potree-core-2.0.11-fastlabel.0.0.x.tgz を fastlabel-application へ移動
+
+古いバージョンを削除して、新規をインポート
+
+```
+yarn remove @fastlabel/potree-core
+yarn add file:./lib/fastlabel-potree-core-2.0.11-fastlabel.0.0.X.tgz
+```
+
+
+#### アノテーションの色付けの繁栄保存
+
+##### change RequestManager
+
+urlのパターンがRequestManagerだと、ファイル名しか変更できないため、拡張して各コンテンツごとにURLを解決できるようにする
+
+##### support NodeDecorator
+
+Potreeのデータは静的な巨大なファイルを、byteのrange指定で取得するので、アノテーションの情報は、識別キーと一緒に同一粒度(node)単位で、保存しているためその繁栄のために、NodeDecoratorを差し込めるようにする
+
+###### rgba BufferAttribute の色をアノテーションの色で塗り替える
+
+###### BufferAttribute追加 anno_idx アノテーションを区別する為に追加
+
+##### add bk_rgba
+
+色のクリア時に、戻しやすくするために bk_rgba を追加する
+
+##### NodeLoader load に完了時のcallbackを追加
+
+load の Promiseは、ワーカーにPOSTするまでになっているため、完了時のタイミングとれないため、追加
+
+##### 点群・アノテーション済みの点群の色調節、表示非表示
+
+以下のアトリビュートをシェーダーに追加
+
+| 属性名 | 説明 | 補足 |
+|:-----------|:------------|:------------|
+| vPointOpacity | 未アノテーションの点群の不透明度 | 点群コントラクト |
+| vAnnoOpacity | アノテーション済みの点群の不透明度 | 不透明度 |
+| vAnnoVisible | アノテーションクラスの点群の表示非表示 |  |
+| vAnnoVisibleSize | アノテーションクラスの点群の表示非表示 |  |
+| vTaskAnnoVisible | アノテーションの点群の表示非表示 | |
+| vTaskAnnoVisibleSize | アノテーションの点群の表示非表示 | |
